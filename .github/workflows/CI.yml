@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - '*'
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target: [ x86_64, armv7, aarch64 ]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: 3.x
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            python3 \
+            python3-pip \
+            python3-venv \
+            pipx \
+            curl \
+            pkg-config \
+            cmake \
+            libssl-dev \
+            build-essential
+      - name: Install Poetry
+        run: |
+          pipx ensurepath
+          pipx install poetry
+      - name: Install and test
+        run: |
+          poetry install --no-root
+          poetry run pip3 install -e .
+          poetry run pytest
+      - name: Build wheels
+        run: |
+          poetry install --no-root
+          poetry build
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-linux-${{ matrix.target }}
+          path: dist
