@@ -39,9 +39,9 @@ the `tokenizers` library.  However, unlike most other tokenizers:
 
 ## Roadmap
 
-* [x] [kl3m-001-32k](kl3m-001-32k/README.md): Nov 2023, original KL3M tokenizer
-* [x] [kl3m-003-64k](kl3m-003-64k/README.md): March 2024, updated KL3M tokenizer
-* [ ] [kl3m-004-128k](kl3m-004-128k/README.md): In progress
+* [x] **kl3m-001-32k**: [README](kl3m-001-32k/README.md)  |  [Hugging Face](https://huggingface.co/alea-institute/kl3m-001-32k) | Original KL3M tokenizer (Nov 2023)
+* [x] **kl3m-001-64k**: [README](kl3m-003-64k/README.md)  |  [Hugging Face](https://huggingface.co/alea-institute/kl3m-003-64k) | Updated KL3M tokenizer (March 2024)
+* [ ] **kl3m-004-128k**: In progress
 
 ## Examples
 
