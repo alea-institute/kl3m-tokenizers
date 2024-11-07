@@ -27,6 +27,7 @@ if __name__ == "__main__":
         for p in (
             "./kl3m-001-32k",
             "./kl3m-003-64k",
+            "./kl3m-004-128k-uncased",
         )
     ]
 
