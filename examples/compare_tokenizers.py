@@ -62,6 +62,7 @@ if __name__ == "__main__":
     kl3m_001 = AutoTokenizer.from_pretrained("alea-institute/kl3m-001-32k")
     kl3m_003 = AutoTokenizer.from_pretrained("alea-institute/kl3m-003-64k")
     kl3m_004_uncased = AutoTokenizer.from_pretrained("kl3m-004-128k-uncased")
+    kl3m_004_cased = AutoTokenizer.from_pretrained("kl3m-004-128k-cased")
     gpt_4o = tiktoken.encoding_for_model("gpt-4o")
 
     # input loop
@@ -76,6 +77,7 @@ if __name__ == "__main__":
             kl3m_001_encoded = kl3m_001(text)
             kl3m_003_encoded = kl3m_003(text)
             kl3m_004_uncased_encoded = kl3m_004_uncased(text)
+            kl3m_004_cased_encoded = kl3m_004_cased(text)
             gpt_4o_encoded = gpt_4o.encode(text)
 
             # get human-readable tokens
@@ -88,6 +90,9 @@ if __name__ == "__main__":
             kl3m_004_uncased_tokens = kl3m_004_uncased.convert_ids_to_tokens(
                 kl3m_004_uncased_encoded["input_ids"]
             )
+            kl3m_004_cased_tokens = kl3m_004_cased.convert_ids_to_tokens(
+                kl3m_004_cased_encoded["input_ids"]
+            )
             gpt_4o_tokens = [gpt_4o.decode([token]) for token in gpt_4o_encoded]
 
             # pretty formatting for these so they are as easy to inspect as possible
@@ -96,6 +101,7 @@ if __name__ == "__main__":
                     "kl3m-001-32k": kl3m_001_tokens,
                     "kl3m-003-64k": kl3m_003_tokens,
                     "kl3m-004-128k-uncased": kl3m_004_uncased_tokens,
+                    "kl3m-004-128k-cased": kl3m_004_cased_tokens,
                     "gpt-4o": gpt_4o_tokens,
                 }
             )
