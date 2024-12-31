@@ -25,10 +25,14 @@ if __name__ == "__main__":
         # this is just getting the absolute path for `../kl3m-embedding-00*` as a string
         (Path(__file__).parent.parent / p).resolve().as_posix()
         for p in (
-            "./kl3m-001-32k",
-            "./kl3m-003-64k",
-            "./kl3m-004-128k-uncased",
-            "./kl3m-004-128k-cased",
+            # "./kl3m-001-32k",
+            # "./kl3m-003-64k",
+            # "./kl3m-004-128k-uncased",
+            # "./kl3m-004-128k-uncased-mlm",
+            # "./kl3m-004-128k-cased",
+            # "kl3m-004-char-4k-cased",
+            "kl3m-004-char-8k-cased",
+            "kl3m-004-char-16k-cased",
         )
     ]
 
@@ -41,18 +45,21 @@ if __name__ == "__main__":
         tokenizer_name = path.split("/")[-1]
 
         # load tokenizer
-        tokenizer = AutoTokenizer.from_pretrained(path)
-        tokenizer.push_to_hub(
-            repo_id=f"alea-institute/{tokenizer_name}", revision="main", private=True
-        )
+        repo_id = f"alea-institute/{tokenizer_name}"
 
-        # get the README.md an dupload it to the repo
-        readme_path = Path(path) / "README.md"
-        if readme_path.exists():
-            hf_api.upload_file(
-                path_or_fileobj=readme_path,
-                path_in_repo="README.md",
-                repo_id=f"alea-institute/{tokenizer_name}",
+        # use HfApi to upload all files from that folder
+        hf_api = HfApi()
+        try:
+            repo_url = hf_api.create_repo(
+                repo_id=repo_id,
+                repo_type="model",
+                private=True,
             )
-        else:
-            print(f"README.md not found for {tokenizer_name}")
+        except Exception as e:
+            print(f"Error creating repo {repo_id}: {e}")
+
+        # now upload all files to main
+        hf_api.upload_folder(
+            repo_id=repo_id,
+            folder_path=path,
+        )

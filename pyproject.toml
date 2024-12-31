@@ -37,6 +37,7 @@ transformers = "^4.45.2"
 tiktoken = "^0.8.0"
 orjsonl = "^1.0.0"
 httpx = "^0.27.2"
+alea-preprocess = "^0.1.12"
 
 
 [tool.poetry.group.dev.dependencies]

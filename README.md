@@ -43,7 +43,10 @@ the `tokenizers` library.  However, unlike most other tokenizers:
 * [x] **kl3m-003-64k**: [README](kl3m-003-64k/README.md)  |  [Hugging Face](https://huggingface.co/alea-institute/kl3m-003-64k) | Updated KL3M tokenizer (March 2024)
 * [x] **kl3m-004-128k-uncased**: [README](kl3m-004-128k-uncased/README.md)  |  [Hugging Face](https://huggingface.co/alea-institute/kl3m-004-128k-uncased) | Updated KL3M tokenizer (November 2024)
 * [x] **kl3m-004-128k-cased**: [README](kl3m-004-128k-cased/README.md)  |  [Hugging Face](https://huggingface.co/alea-institute/kl3m-004-128k-cased) | Updated KL3M tokenizer (November 2024)
-
+* [x] **kl3m-004-char-4k-cased**: [README](kl3m-004-char-4k-cased/README.md)  |  [Hugging Face](https://huggingface.co/alea-institute/kl3m-004-char-4k-cased) | Updated KL3M tokenizer (December  2024) 
+* [x] **kl3m-004-char-8k-cased**: [README](kl3m-004-char-8k-cased/README.md)  |  [Hugging Face](https://huggingface.co/alea-institute/kl3m-004-char-8k-cased) | Updated KL3M tokenizer (December  2024)
+* [x] **kl3m-004-char-16k-cased**: [README](kl3m-004-char-16k-cased/README.md)  |  [Hugging Face](https://huggingface.co/alea-institute/kl3m-004-char-16k-cased) | Updated KL3M tokenizer (December 2024)
+* 
 ## Examples
 
 You can generate your own comparisons against `tiktoken` like this:
