@@ -84,9 +84,9 @@ if __name__ == "__main__":
             # pretty formatting for these so they are as easy to inspect as possible
             print_token_sequences(
                 {
-                    "kl3m-004-4k": kl3m_4k_tokens,
-                    "kl3m-004-8k": kl3m_8k_tokens,
-                    "kl3m-004-16k": kl3m_16k_tokens,
+                    "0 kl3m-004-4k-cased": kl3m_4k_tokens,
+                    "1 kl3m-004-8k-cased": kl3m_8k_tokens,
+                    "2 kl3m-004-16k-cased": kl3m_16k_tokens,
                 }
             )
         except KeyboardInterrupt:
