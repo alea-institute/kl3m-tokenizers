@@ -1,0 +1,1 @@
+{"unk_token": "<|unk|>", "bos_token": "<|start|>", "eos_token": "<|end|>", "pad_token": "<|pad|>", "sep_token": "<|sep|>", "cls_token": "<|cls|>", "mask_token": "<|mask|>", "add_prefix_space": false, "do_lower_case": false, "tokenizer_class": "PreTrainedTokenizerFast", "pretokenizer_type": "whitespace"}

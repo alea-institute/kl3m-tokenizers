@@ -36,7 +36,14 @@ the `tokenizers` library.  However, unlike most other tokenizers:
 4. The KL3M tokenizers include a large number of controlled tokens related to legal citations and financial abbreviations.
 5. The KL3M tokenizers include support for a variety of tasks including causal (generative) and masked (embedding) tasks.
 
-We also build "character" tokenizers that are designed to be used for low-level tasks like spelling correction or OCR correction.
+We also build specialized tokenizers for different use cases:
+
+1. **Character tokenizers**: Designed for low-level tasks like spelling correction or OCR correction.
+2. **Pretokenized tokenizers (KL3M-005)**: Using advanced pretokenizers for multi-word tokens:
+   * **RandomWhitespaceSplit**: Randomly splits text at whitespace with a configurable probability, allowing the model to learn word combinations.
+   * **RandomChunkSplit**: Randomly splits text into chunks of configurable length, creating tokens that cross word boundaries.
+
+These pretokenizers help address common tokenization issues like the "token healing" problem and allow more efficient encoding of common multi-word expressions.
 
 
 ## Roadmap
@@ -45,9 +52,10 @@ We also build "character" tokenizers that are designed to be used for low-level 
 * [x] **kl3m-003-64k**: [README](kl3m-003-64k/README.md)  |  [Hugging Face](https://huggingface.co/alea-institute/kl3m-003-64k) | Updated KL3M tokenizer (March 2024)
 * [x] **kl3m-004-128k-uncased**: [README](kl3m-004-128k-uncased/README.md)  |  [Hugging Face](https://huggingface.co/alea-institute/kl3m-004-128k-uncased) | Updated KL3M tokenizer (November 2024)
 * [x] **kl3m-004-128k-cased**: [README](kl3m-004-128k-cased/README.md)  |  [Hugging Face](https://huggingface.co/alea-institute/kl3m-004-128k-cased) | Updated KL3M tokenizer (November 2024)
-* [x] **kl3m-004-char-4k-cased**: [README](kl3m-004-char-4k-cased/README.md)  |  [Hugging Face](https://huggingface.co/alea-institute/kl3m-004-char-4k-cased) | Updated KL3M tokenizer (December  2024) 
-* [x] **kl3m-004-char-8k-cased**: [README](kl3m-004-char-8k-cased/README.md)  |  [Hugging Face](https://huggingface.co/alea-institute/kl3m-004-char-8k-cased) | Updated KL3M tokenizer (December  2024)
+* [x] **kl3m-004-char-4k-cased**: [README](kl3m-004-char-4k-cased/README.md)  |  [Hugging Face](https://huggingface.co/alea-institute/kl3m-004-char-4k-cased) | Updated KL3M tokenizer (December 2024) 
+* [x] **kl3m-004-char-8k-cased**: [README](kl3m-004-char-8k-cased/README.md)  |  [Hugging Face](https://huggingface.co/alea-institute/kl3m-004-char-8k-cased) | Updated KL3M tokenizer (December 2024)
 * [x] **kl3m-004-char-16k-cased**: [README](kl3m-004-char-16k-cased/README.md)  |  [Hugging Face](https://huggingface.co/alea-institute/kl3m-004-char-16k-cased) | Updated KL3M tokenizer (December 2024)
+* [ ] **kl3m-005-pretokenized**: Tokenizers with RandomWhitespaceSplit and RandomChunkSplit pretokenizers (March 2025)
  
 ## Examples
 
@@ -274,6 +282,16 @@ Power-of-2 pad tokens: 58
 Final vocab size: 8192
 Training time: 1.31 seconds
 Output path: tokenizer-8k/
+```
+
+**kl3m-005 with RandomWhitespaceSplit Pretokenizer**:
+```bash
+$ PYTHONPATH=. poetry run python3 kl3m_tokenizers/tokenizers/kl3m_005/train_tokenizer.py --vocab_size 8192 --pad2 --pretokenizer whitespace --split_probability 0.3 samples/usc.1000.jsonl.gz tokenizer-whitespace-8k
+```
+
+**kl3m-005 with RandomChunkSplit Pretokenizer**:
+```bash
+$ PYTHONPATH=. poetry run python3 kl3m_tokenizers/tokenizers/kl3m_005/train_tokenizer.py --vocab_size 8192 --pad2 --pretokenizer chunk --min_length 2 --max_length 5 samples/usc.1000.jsonl.gz tokenizer-chunk-8k
 ```
 ## License
 
