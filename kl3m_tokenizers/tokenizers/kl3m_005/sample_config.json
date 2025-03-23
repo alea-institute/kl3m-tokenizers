@@ -1,0 +1,28 @@
+{
+  "input_tokenizer": "alea-institute/kl3m-004-128k-cased",
+  "datasets": [
+    "alea-institute/kl3m-data-usc",
+    "alea-institute/kl3m-data-ecfr",
+    "alea-institute/kl3m-data-fr"
+  ],
+  "vocab_size": 131072,
+  "min_frequency": 10,
+  "normalization": "nfkc",
+  "lowercase": false,
+  "pad2": true,
+  "pretokenizer_type": "whitespace",
+  "split_probability": 0.5,
+  "min_length": 2,
+  "max_length": 10,
+  "sample_rate": 0.1,
+  "batch_size": 10000,
+  "custom_tokens": {
+    "include_whitespace": true,
+    "include_markdown": true,
+    "include_html": true,
+    "include_json": true,
+    "include_xml": true,
+    "include_years": true,
+    "include_citations": true
+  }
+}
