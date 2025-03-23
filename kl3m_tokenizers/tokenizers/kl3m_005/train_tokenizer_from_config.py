@@ -324,6 +324,7 @@ def yield_text_from_datasets(
 ) -> Generator[str, None, None]:
     """
     Yield text from multiple datasets, decoding tokens using the input tokenizer.
+    Uses batch decoding for improved performance.
 
     Args:
         dataset_names (List[str]): List of HuggingFace dataset names in format "name" or "name/config"
@@ -331,7 +332,7 @@ def yield_text_from_datasets(
         sample_rate (Optional[float]): If provided, randomly sample this fraction of examples
         lowercase (bool): Whether to lowercase the text
         shuffle_seed (Optional[int]): If provided, shuffle with this random seed
-        batch_size (int): Size of batches to load from datasets
+        batch_size (int): Size of batches to load from datasets and to decode
 
     Yields:
         Generator[str, None, None]: Generator of decoded text
@@ -365,24 +366,45 @@ def yield_text_from_datasets(
                         print(f"Warning: 'tokens' field not found in {dataset_name}/{split_name}, skipping")
                         continue
                     
+                    # Apply sampling if requested
+                    token_batches = []
+                    
                     for tokens in batch["tokens"]:
-                        # Apply sampling if requested
-                        if sample_rate is not None and rng.random() > sample_rate:
-                            continue
+                        if sample_rate is None or rng.random() <= sample_rate:
+                            token_batches.append(tokens)
+                    
+                    if not token_batches:
+                        continue
+                    
+                    # Batch decode for better performance
+                    try:
+                        decoded_texts = input_tokenizer.batch_decode(token_batches)
                         
-                        # Decode tokens to text
-                        try:
-                            text = input_tokenizer.decode(tokens)
-                            
+                        # Process each decoded text
+                        for text in decoded_texts:
                             # Apply lowercase if requested
                             if lowercase:
                                 text = text.lower()
-                                
+                            
                             yield text
                             
-                        except Exception as e:
-                            print(f"Error decoding tokens: {e}")
-                            continue
+                    except Exception as e:
+                        print(f"Error batch decoding tokens: {e}")
+                        
+                        # Fall back to individual decoding if batch fails
+                        for tokens in token_batches:
+                            try:
+                                text = input_tokenizer.decode(tokens)
+                                
+                                # Apply lowercase if requested
+                                if lowercase:
+                                    text = text.lower()
+                                    
+                                yield text
+                                
+                            except Exception as e:
+                                print(f"Error decoding tokens: {e}")
+                                continue
                 
                 print(f"Finished processing {split_name} from {dataset_name}")
                 
