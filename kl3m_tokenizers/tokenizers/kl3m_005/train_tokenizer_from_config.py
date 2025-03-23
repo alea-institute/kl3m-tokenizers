@@ -315,19 +315,23 @@ def setup_pretokenizer(
 
 
 def yield_text_from_datasets(
-    dataset_names: List[str],
+    dataset_sources: List[Dict[str, Any]],
     input_tokenizer_name: str,
     sample_rate: Optional[float] = None,
     lowercase: bool = False,
     shuffle_seed: Optional[int] = None,
-    batch_size: int = 1000,
+    batch_size: int = 100,
 ) -> Generator[str, None, None]:
     """
-    Yield text from multiple datasets, decoding tokens using the input tokenizer.
+    Yield text from multiple datasets or local files, decoding tokens using the input tokenizer.
     Uses batch decoding for improved performance.
 
     Args:
-        dataset_names (List[str]): List of HuggingFace dataset names in format "name" or "name/config"
+        dataset_sources (List[Dict[str, Any]]): List of dataset sources, each containing:
+            - 'source': str - Either 'huggingface' or 'local'
+            - For huggingface: 'name': str - Dataset name in format "name" or "name/config"
+            - For local: 'path': str - Path to local file (.txt, .jsonl, .jsonl.gz)
+                       'field': Optional[str] - For jsonl files, the field containing text or tokens
         input_tokenizer_name (str): Name or path of the tokenizer to use for decoding tokens
         sample_rate (Optional[float]): If provided, randomly sample this fraction of examples
         lowercase (bool): Whether to lowercase the text
@@ -344,72 +348,141 @@ def yield_text_from_datasets(
     # Set up RNG for sampling
     rng = random.Random(shuffle_seed) if shuffle_seed is not None else random.Random()
     
-    # Process each dataset
-    for dataset_name in dataset_names:
-        try:
-            print(f"Loading dataset: {dataset_name}")
-            
-            # Handle dataset with config vs without config
-            dataset = datasets.load_dataset(dataset_name)
-
-            # Process each split in the dataset (train, validation, test)
-            for split_name in dataset:
-                split = dataset[split_name]
-                print(f"Processing split: {split_name} with {len(split)} examples")
+    # Process each dataset source
+    for source_config in dataset_sources:
+        source_type = source_config.get('source', 'huggingface')
+        
+        if source_type == 'huggingface':
+            # Process HuggingFace dataset
+            dataset_name = source_config['name']
+            try:
+                print(f"Loading HuggingFace dataset: {dataset_name}")
                 
-                # Process in batches
-                for i in range(0, len(split), batch_size):
-                    batch = split[i:i+batch_size]
+                # Handle dataset with config vs without config
+                dataset = datasets.load_dataset(dataset_name)
+
+                # Process each split in the dataset (train, validation, test)
+                for split_name in dataset:
+                    split = dataset[split_name]
+                    print(f"Processing split: {split_name} with {len(split)} examples")
                     
-                    # Assuming 'tokens' field exists in the dataset
-                    if "tokens" not in batch:
-                        print(f"Warning: 'tokens' field not found in {dataset_name}/{split_name}, skipping")
-                        continue
-                    
-                    # Apply sampling if requested
-                    token_batches = []
-                    
-                    for tokens in batch["tokens"]:
-                        if sample_rate is None or rng.random() <= sample_rate:
-                            token_batches.append(tokens)
-                    
-                    if not token_batches:
-                        continue
-                    
-                    # Batch decode for better performance
-                    try:
-                        decoded_texts = input_tokenizer.batch_decode(token_batches)
+                    # Process in batches
+                    for i in range(0, len(split), batch_size):
+                        batch = split[i:i+batch_size]
                         
-                        # Process each decoded text
-                        for text in decoded_texts:
-                            # Apply lowercase if requested
-                            if lowercase:
-                                text = text.lower()
-                            
-                            yield text
-                            
-                    except Exception as e:
-                        print(f"Error batch decoding tokens: {e}")
+                        # Assuming 'tokens' field exists in the dataset
+                        if "tokens" not in batch:
+                            print(f"Warning: 'tokens' field not found in {dataset_name}/{split_name}, skipping")
+                            continue
                         
-                        # Fall back to individual decoding if batch fails
-                        for tokens in token_batches:
-                            try:
-                                text = input_tokenizer.decode(tokens)
-                                
+                        # Apply sampling if requested
+                        token_batches = []
+                        
+                        for tokens in batch["tokens"]:
+                            if sample_rate is None or rng.random() <= sample_rate:
+                                token_batches.append(tokens)
+                        
+                        if not token_batches:
+                            continue
+                        
+                        # Batch decode for better performance
+                        try:
+                            decoded_texts = input_tokenizer.batch_decode(token_batches)
+                            
+                            # Process each decoded text
+                            for text in decoded_texts:
                                 # Apply lowercase if requested
                                 if lowercase:
                                     text = text.lower()
-                                    
+                                
                                 yield text
                                 
-                            except Exception as e:
-                                print(f"Error decoding tokens: {e}")
+                        except Exception as e:
+                            print(f"Error batch decoding tokens: {e}")
+                            
+                            # Fall back to individual decoding if batch fails
+                            for tokens in token_batches:
+                                try:
+                                    text = input_tokenizer.decode(tokens)
+                                    
+                                    # Apply lowercase if requested
+                                    if lowercase:
+                                        text = text.lower()
+                                        
+                                    yield text
+                                    
+                                except Exception as e:
+                                    print(f"Error decoding tokens: {e}")
+                                    continue
+                    
+                    print(f"Finished processing {split_name} from {dataset_name}")
+                    
+            except Exception as e:
+                print(f"Error loading dataset {dataset_name}: {e}")
+                continue
+        
+        elif source_type == 'local':
+            # Process local file
+            file_path = source_config['path']
+            field = source_config.get('field', None)  # For JSON files
+            has_tokens = source_config.get('has_tokens', False)  # Whether file contains token IDs
+            
+            try:
+                print(f"Loading local file: {file_path}")
+
+                extension = Path(file_path).suffix.lower()
+                if extension == '.gz':
+                    opener = gzip.open
+                else:
+                    opener = open
+
+                with opener(file_path, 'rt', encoding='utf-8') as input_file:
+                    for line in input_file:
+                        # apply sampling
+                        if sample_rate is not None and rng.random() > sample_rate:
+                            continue
+
+                        try:
+                            record = json.loads(line)
+                        except json.JSONDecodeError:
+                            print(f"Error decoding JSON line: {line}")
+                            continue
+
+                        # get the text or tokens based on the field
+                        field_value = record.get(field, None)
+                        if field_value is None:
+                            print(f"Field '{field}' not found in record: {record}")
+                            continue
+
+                        # check if text or tokens
+                        if has_tokens:
+                            # decode tokens
+                            if isinstance(field_value, list):
+                                tokens = field_value
+                            else:
+                                print(f"Expected list of tokens, got: {field_value}")
                                 continue
-                
-                print(f"Finished processing {split_name} from {dataset_name}")
-                
-        except Exception as e:
-            print(f"Error loading dataset {dataset_name}: {e}")
+
+                            # Decode the tokens
+                            text = input_tokenizer.decode(tokens)
+                        else:
+                            # Assume it's text
+                            text = field_value
+
+                        # Apply lowercase if requested
+                        if lowercase:
+                            text = text.lower()
+
+                        yield text
+
+                print(f"Finished processing local file: {file_path}")
+            
+            except Exception as e:
+                print(f"Error processing local file {file_path}: {e}")
+                continue
+        
+        else:
+            print(f"Unsupported source type: {source_type}")
             continue
 
 
@@ -433,7 +506,23 @@ def train_tokenizer(
     
     # Extract config parameters with defaults
     input_tokenizer = config["input_tokenizer"]
-    dataset_names = config["datasets"]
+    
+    # Dataset sources can be in old format (list of names) or new format (list of configs)
+    if "datasets" in config and isinstance(config["datasets"], list):
+        # Check if it's the old format (list of dataset names)
+        if all(isinstance(item, str) for item in config["datasets"]):
+            # Convert to new format
+            dataset_sources = [{"source": "huggingface", "name": name} for name in config["datasets"]]
+        else:
+            # Already in new format
+            dataset_sources = config["datasets"]
+    elif "dataset_sources" in config:
+        # Direct use of new format
+        dataset_sources = config["dataset_sources"]
+    else:
+        # Neither format found
+        raise ValueError("Config must contain either 'datasets' (list of names) or 'dataset_sources' (list of configs)")
+    
     vocab_size = config.get("vocab_size", 32768)
     min_frequency = config.get("min_frequency", 10)
     normalization = config.get("normalization", "nfkc")
@@ -563,7 +652,7 @@ def train_tokenizer(
         print(f"Training tokenizer with {pretokenizer_type} pretokenizer using iterator.")
         tokenizer.train_from_iterator(
             yield_text_from_datasets(
-                dataset_names=dataset_names,
+                dataset_sources=dataset_sources,
                 input_tokenizer_name=input_tokenizer,
                 sample_rate=sample_rate,
                 lowercase=lowercase,
@@ -577,7 +666,7 @@ def train_tokenizer(
         print("Training tokenizer without pretokenizer.")
         tokenizer.train_from_iterator(
             yield_text_from_datasets(
-                dataset_names=dataset_names,
+                dataset_sources=dataset_sources,
                 input_tokenizer_name=input_tokenizer,
                 sample_rate=sample_rate,
                 lowercase=lowercase,

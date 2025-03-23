@@ -1,9 +1,16 @@
 {
   "input_tokenizer": "alea-institute/kl3m-004-128k-cased",
-  "datasets": [
-    "alea-institute/kl3m-data-usc",
-    "alea-institute/kl3m-data-ecfr",
-    "alea-institute/kl3m-data-fr"
+  "dataset_sources": [
+    {
+      "source": "local",
+      "path": "samples/usc.1000.jsonl.gz",
+      "field": "text",
+      "has_tokens": false
+    },
+    {
+      "source": "huggingface",
+      "name": "alea-institute/kl3m-data-usc"
+    }
   ],
   "vocab_size": 131072,
   "min_frequency": 10,
