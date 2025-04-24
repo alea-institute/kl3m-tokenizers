@@ -387,6 +387,7 @@ def train_tokenizer(
     split_probability: float = 0.3,
     min_length: int = 2,
     max_length: int = 5,
+    include_reasoning: bool = True,
 ):
     """
     Train a tokenizer with optional pretokenizer.
@@ -403,6 +404,7 @@ def train_tokenizer(
         split_probability (float, optional): Probability of splitting at whitespace (0.0-1.0). Defaults to 0.3.
         min_length (int, optional): Minimum length of chunks for RandomChunkSplit. Defaults to 2.
         max_length (int, optional): Maximum length of chunks for RandomChunkSplit. Defaults to 5.
+        include_reasoning (bool, optional): Whether to include reasoning tokens. Defaults to True.
     """
     # start time
     start_time = time.time()
@@ -430,7 +432,53 @@ def train_tokenizer(
         "</|user|>",
         "<|instruction|>",
         "</|instruction|>",
+        "<|snippet|>",
+        "</|snippet|>",
     ]
+
+    # add reasoning tokens if requested
+    if include_reasoning:
+        special_tokens.extend(
+            [
+                # System 1 Tokens
+                "<|intuition|>", "</|intuition|>",
+                "<|association|>", "</|association|>",
+                "<|emotion|>", "</|emotion|>",
+                "<|heuristic|>", "</|heuristic|>",
+                "<|bias|>", "</|bias|>",
+
+                # System 2 Tokens
+                "<|deliberation|>", "</|deliberation|>",
+                "<|calculation|>", "</|calculation|>",
+                "<|analysis|>", "</|analysis|>",
+                "<|evaluation|>", "</|evaluation|>",
+                "<|metacognition|>", "</|metacognition|>",
+
+                # Process Stage Tokens
+                "<|problem_definition|>", "</|problem_definition|>",
+                "<|information_gathering|>", "</|information_gathering|>",
+                "<|hypothesis_generation|>", "</|hypothesis_generation|>",
+                "<|testing|>", "</|testing|>",
+                "<|refinement|>", "</|refinement|>",
+                "<|conclusion|>", "</|conclusion|>",
+
+                # Strategic Approach Tokens
+                "<|deductive|>", "</|deductive|>",
+                "<|inductive|>", "</|inductive|>",
+                "<|abductive|>", "</|abductive|>",
+                "<|counterfactual|>", "</|counterfactual|>",
+                "<|bayesian|>", "</|bayesian|>",
+                "<|analogical|>", "</|analogical|>",
+
+                # Cognitive Enhancement Tokens
+                "<|steelman|>", "</|steelman|>",
+                "<|perspective_shift|>", "</|perspective_shift|>",
+                "<|assumption_check|>", "</|assumption_check|>",
+                "<|abstraction|>", "</|abstraction|>",
+                "<|concretization|>", "</|concretization|>",
+                "<|temporal_extension|>", "</|temporal_extension|>"
+            ]
+        )
 
     # Check if we're using a pretokenizer
     if pretokenizer_type:

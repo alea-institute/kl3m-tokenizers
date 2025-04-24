@@ -10,19 +10,114 @@ import gzip
 import random
 import string
 import time
+import numpy as np
+import collections
 from math import log2
 from pathlib import Path
-from typing import Generator, Optional, List, Dict, Any
+from typing import Generator, Optional, List, Dict, Any, Tuple, Deque
 
 # packages
 import httpx
 import datasets
+from cheesecloth import char_entropy, unigram_entropy
 from tokenizers import Tokenizer, normalizers
 from tokenizers.implementations import ByteLevelBPETokenizer
 from tokenizers.models import BPE
 from tokenizers.normalizers import NFC, NFD, NFKC, NFKD, Lowercase, Sequence
 from tokenizers.pre_tokenizers import RandomWhitespaceSplit, RandomChunkSplit
 from transformers import AutoTokenizer
+
+
+# Entropy filter class to manage running entropy stats
+class EntropyFilter:
+    """
+    A filter that tracks entropy statistics and filters samples based on percentiles.
+    
+    This class maintains a queue of recent entropy values and can determine 
+    if a new sample's entropy is within acceptable percentile bounds.
+    """
+    
+    def __init__(self, threshold: float, queue_size: int = 100000):
+        """
+        Initialize the entropy filter.
+        
+        Args:
+            threshold: The percentile threshold (0.0-0.5). Values in the bottom or top 
+                       threshold percentiles will be filtered out.
+            queue_size: The maximum number of historical entropy values to maintain.
+        """
+        self.threshold = threshold
+        self.queue_size = queue_size
+        self.char_entropies: Deque[float] = collections.deque(maxlen=queue_size)
+        self.unigram_entropies: Deque[float] = collections.deque(maxlen=queue_size)
+        
+    def update(self, text: str) -> None:
+        """
+        Update the filter with a new text sample's entropy values.
+        
+        Args:
+            text: The text sample to compute entropy for.
+        """
+        if not text or len(text) < 10:  # Skip very short texts
+            return
+        
+        try:
+            # Calculate entropy values
+            c_entropy = char_entropy(text)
+            u_entropy = unigram_entropy(text, True, True)
+            
+            # Add to queues
+            self.char_entropies.append(c_entropy)
+            self.unigram_entropies.append(u_entropy)
+            
+        except Exception as e:
+            print(f"Error calculating entropy: {e}")
+    
+    def should_keep(self, text: str) -> bool:
+        """
+        Determine if a text sample should be kept based on its entropy.
+        
+        Args:
+            text: The text sample to evaluate.
+            
+        Returns:
+            bool: True if the sample should be kept, False if it should be filtered out.
+        """
+        # If we don't have enough samples yet, keep everything
+        if len(self.char_entropies) < 1000:
+            self.update(text)  # Still update our stats
+            return True
+        
+        try:
+            # Calculate entropy values for this sample
+            c_entropy = char_entropy(text)
+            u_entropy = unigram_entropy(text, True, True)
+            
+            # Get current percentile thresholds
+            char_values = np.array(list(self.char_entropies))
+            unigram_values = np.array(list(self.unigram_entropies))
+            
+            # Calculate percentile boundaries
+            char_low = np.percentile(char_values, self.threshold * 100)
+            char_high = np.percentile(char_values, (1 - self.threshold) * 100)
+            
+            unigram_low = np.percentile(unigram_values, self.threshold * 100)
+            unigram_high = np.percentile(unigram_values, (1 - self.threshold) * 100)
+            
+            # Decide whether to keep based on both entropy metrics
+            char_ok = char_low <= c_entropy <= char_high
+            unigram_ok = unigram_low <= u_entropy <= unigram_high
+            
+            # Only if we keep it do we update our stats
+            if char_ok and unigram_ok:
+                self.update(text)
+                return True
+            
+            return False
+            
+        except Exception as e:
+            print(f"Error evaluating entropy: {e}")
+            return True  # On error, default to keeping the sample
 
 
 # set up custom token data
@@ -317,14 +412,15 @@ def setup_pretokenizer(
 def yield_text_from_datasets(
     dataset_sources: List[Dict[str, Any]],
     input_tokenizer_name: str,
-    sample_rate: Optional[float] = None,
+    sample_rate: Optional[float] = None,  # Global sample rate (as fallback)
     lowercase: bool = False,
     shuffle_seed: Optional[int] = None,
     batch_size: int = 100,
+    filter_entropy: Optional[float] = None,  # Entropy filtering threshold
 ) -> Generator[str, None, None]:
     """
     Yield text from multiple datasets or local files, decoding tokens using the input tokenizer.
-    Uses batch decoding for improved performance.
+    Uses batch decoding for improved performance and can filter based on text entropy.
 
     Args:
         dataset_sources (List[Dict[str, Any]]): List of dataset sources, each containing:
@@ -332,11 +428,16 @@ def yield_text_from_datasets(
             - For huggingface: 'name': str - Dataset name in format "name" or "name/config"
             - For local: 'path': str - Path to local file (.txt, .jsonl, .jsonl.gz)
                        'field': Optional[str] - For jsonl files, the field containing text or tokens
+            - 'sample_rate': Optional[float] - Source-specific sampling rate (overrides global)
         input_tokenizer_name (str): Name or path of the tokenizer to use for decoding tokens
-        sample_rate (Optional[float]): If provided, randomly sample this fraction of examples
+        sample_rate (Optional[float]): Global sampling rate (used if source doesn't specify its own)
         lowercase (bool): Whether to lowercase the text
         shuffle_seed (Optional[int]): If provided, shuffle with this random seed
         batch_size (int): Size of batches to load from datasets and to decode
+        filter_entropy (Optional[float]): If provided, filter samples based on character and unigram
+                                        entropy. Value should be between 0.0 and 0.5, representing
+                                        the percentile thresholds to exclude (e.g., 0.1 means exclude
+                                        samples below 10th percentile or above 90th percentile).
 
     Yields:
         Generator[str, None, None]: Generator of decoded text
@@ -348,8 +449,19 @@ def yield_text_from_datasets(
     # Set up RNG for sampling
     rng = random.Random(shuffle_seed) if shuffle_seed is not None else random.Random()
     
+    # Set up entropy filter if needed
+    entropy_filter = None
+    if filter_entropy is not None:
+        if 0 < filter_entropy < 0.5:
+            print(f"Using entropy filter with threshold: {filter_entropy}")
+            entropy_filter = EntropyFilter(filter_entropy)
+        else:
+            print(f"Warning: Invalid filter_entropy value {filter_entropy}. Must be between 0 and 0.5. Disabling entropy filtering.")
+    
     # Process each dataset source
     for source_config in dataset_sources:
+        # Get source-specific sample rate (or use global rate as fallback)
+        source_sample_rate = source_config.get('sample_rate', sample_rate)
         source_type = source_config.get('source', 'huggingface')
         
         if source_type == 'huggingface':
@@ -357,6 +469,7 @@ def yield_text_from_datasets(
             dataset_name = source_config['name']
             try:
                 print(f"Loading HuggingFace dataset: {dataset_name}")
+                print(f"Using sample rate: {source_sample_rate}")
                 
                 # Handle dataset with config vs without config
                 dataset = datasets.load_dataset(dataset_name)
@@ -379,7 +492,7 @@ def yield_text_from_datasets(
                         token_batches = []
                         
                         for tokens in batch["tokens"]:
-                            if sample_rate is None or rng.random() <= sample_rate:
+                            if source_sample_rate is None or rng.random() <= source_sample_rate:
                                 token_batches.append(tokens)
                         
                         if not token_batches:
@@ -395,7 +508,12 @@ def yield_text_from_datasets(
                                 if lowercase:
                                     text = text.lower()
                                 
-                                yield text
+                                # Apply entropy filtering if configured
+                                if entropy_filter is not None:
+                                    if entropy_filter.should_keep(text):
+                                        yield text
+                                else:
+                                    yield text
                                 
                         except Exception as e:
                             print(f"Error batch decoding tokens: {e}")
@@ -408,8 +526,13 @@ def yield_text_from_datasets(
                                     # Apply lowercase if requested
                                     if lowercase:
                                         text = text.lower()
-                                        
-                                    yield text
+                                    
+                                    # Apply entropy filtering if configured
+                                    if entropy_filter is not None:
+                                        if entropy_filter.should_keep(text):
+                                            yield text
+                                    else:
+                                        yield text
                                     
                                 except Exception as e:
                                     print(f"Error decoding tokens: {e}")
@@ -429,6 +552,7 @@ def yield_text_from_datasets(
             
             try:
                 print(f"Loading local file: {file_path}")
+                print(f"Using sample rate: {source_sample_rate}")
 
                 extension = Path(file_path).suffix.lower()
                 if extension == '.gz':
@@ -439,7 +563,7 @@ def yield_text_from_datasets(
                 with opener(file_path, 'rt', encoding='utf-8') as input_file:
                     for line in input_file:
                         # apply sampling
-                        if sample_rate is not None and rng.random() > sample_rate:
+                        if source_sample_rate is not None and rng.random() > source_sample_rate:
                             continue
 
                         try:
@@ -473,7 +597,12 @@ def yield_text_from_datasets(
                         if lowercase:
                             text = text.lower()
 
-                        yield text
+                        # Apply entropy filtering if configured
+                        if entropy_filter is not None:
+                            if entropy_filter.should_keep(text):
+                                yield text
+                        else:
+                            yield text
 
                 print(f"Finished processing local file: {file_path}")
             
@@ -535,6 +664,7 @@ def train_tokenizer(
     sample_rate = config.get("sample_rate", None)
     shuffle_seed = config.get("shuffle_seed", None)
     batch_size = config.get("batch_size", 1000)
+    filter_entropy = config.get("filter_entropy", None)
     custom_token_settings = config.get("custom_tokens", {
         "include_whitespace": True,
         "include_markdown": True,
@@ -654,10 +784,11 @@ def train_tokenizer(
             yield_text_from_datasets(
                 dataset_sources=dataset_sources,
                 input_tokenizer_name=input_tokenizer,
-                sample_rate=sample_rate,
+                sample_rate=sample_rate,  # This is now used as a fallback if a source doesn't specify its own
                 lowercase=lowercase,
                 shuffle_seed=shuffle_seed,
-                batch_size=batch_size
+                batch_size=batch_size,
+                filter_entropy=filter_entropy
             ),
             trainer=trainer
         )
@@ -668,10 +799,11 @@ def train_tokenizer(
             yield_text_from_datasets(
                 dataset_sources=dataset_sources,
                 input_tokenizer_name=input_tokenizer,
-                sample_rate=sample_rate,
+                sample_rate=sample_rate,  # This is now used as a fallback if a source doesn't specify its own
                 lowercase=lowercase,
                 shuffle_seed=shuffle_seed,
-                batch_size=batch_size
+                batch_size=batch_size,
+                filter_entropy=filter_entropy
             ),
             vocab_size=vocab_size - len(special_tokens) - len(add_tokens),
             min_frequency=min_frequency,
@@ -813,6 +945,9 @@ def train_tokenizer(
             print(f"  Split probability: {split_probability}")
         elif pretokenizer_type.lower() == "chunk":
             print(f"  Min length: {min_length}, Max length: {max_length}")
+    
+    if filter_entropy is not None:
+        print(f"Entropy filtering threshold: {filter_entropy} (excluding top and bottom {filter_entropy * 100:.1f}% of samples)")
 
 
 if __name__ == "__main__":

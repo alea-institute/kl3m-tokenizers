@@ -3,26 +3,38 @@
   "dataset_sources": [
     {
       "source": "local",
-      "path": "samples/usc.1000.jsonl.gz",
+      "path": "/data0/data/legal/dedupe/usc.dedupe.jsonl.gz",
       "field": "text",
-      "has_tokens": false
+      "has_tokens": false,
+      "sample_rate": 1.0
     },
     {
-      "source": "huggingface",
-      "name": "alea-institute/kl3m-data-usc"
+      "source": "local",
+      "path": "/data0/data/legal/dedupe/cfr.dedupe.jsonl.gz",
+      "field": "text",
+      "has_tokens": false,
+      "sample_rate": 1.0
+    },
+    {
+      "source": "local",
+      "path": "/data0/data/legal/dedupe/fr.dedupe.jsonl.gz",
+      "field": "text",
+      "has_tokens": false,
+      "sample_rate": 0.1
     }
   ],
-  "vocab_size": 131072,
-  "min_frequency": 10,
+  "vocab_size": 262144,
+  "min_frequency": 2,
   "normalization": "nfkc",
   "lowercase": false,
   "pad2": true,
   "pretokenizer_type": "whitespace",
   "split_probability": 0.5,
   "min_length": 2,
-  "max_length": 10,
+  "max_length": 32,
   "sample_rate": 0.1,
   "batch_size": 10000,
+  "filter_entropy": 0.1,
   "custom_tokens": {
     "include_whitespace": true,
     "include_markdown": true,
