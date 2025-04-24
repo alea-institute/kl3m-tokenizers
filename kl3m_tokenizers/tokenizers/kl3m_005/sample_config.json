@@ -14,13 +14,6 @@
       "field": "text",
       "has_tokens": false,
       "sample_rate": 1.0
-    },
-    {
-      "source": "local",
-      "path": "/data0/data/legal/dedupe/fr.dedupe.jsonl.gz",
-      "field": "text",
-      "has_tokens": false,
-      "sample_rate": 0.1
     }
   ],
   "vocab_size": 262144,
@@ -35,6 +28,8 @@
   "sample_rate": 0.1,
   "batch_size": 10000,
   "filter_entropy": 0.1,
+  "prune_min_frequency": 2,
+  "prune_step_interval": 100,
   "custom_tokens": {
     "include_whitespace": true,
     "include_markdown": true,

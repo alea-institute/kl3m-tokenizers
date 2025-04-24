@@ -52,7 +52,7 @@ dev = [
 [tool.uv]
 
 [tool.uv.sources]
-tokenizers = { git = "https://github.com/alea-institute/tokenizers.git", branch = "random-chunk-bpe-multi-word", subdirectory = "bindings/python" }
+tokenizers = { git = "https://github.com/alea-institute/tokenizers.git", branch = "main", subdirectory = "bindings/python" }
 
 [tool.hatch.build.targets.sdist]
 exclude = [

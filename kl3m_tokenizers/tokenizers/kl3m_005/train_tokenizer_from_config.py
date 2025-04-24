@@ -10,7 +10,7 @@ import gzip
 import random
 import string
 import time
-import numpy as np
+import statistics
 import collections
 from math import log2
 from pathlib import Path
@@ -35,6 +35,7 @@ class EntropyFilter:
     
     This class maintains a queue of recent entropy values and can determine 
     if a new sample's entropy is within acceptable percentile bounds.
+    Uses Python's built-in statistics module instead of numpy for efficiency.
     """
     
     def __init__(self, threshold: float, queue_size: int = 100000):
@@ -50,6 +51,17 @@ class EntropyFilter:
         self.queue_size = queue_size
         self.char_entropies: Deque[float] = collections.deque(maxlen=queue_size)
         self.unigram_entropies: Deque[float] = collections.deque(maxlen=queue_size)
+        
+        # Cache for percentile boundaries, updated periodically
+        self._cached_boundaries = {
+            'char_low': None,
+            'char_high': None,
+            'unigram_low': None,
+            'unigram_high': None,
+            'last_update_count': 0
+        }
+        # Only recalculate percentiles every N samples to improve performance
+        self._recalc_interval = 1000
         
     def update(self, text: str) -> None:
         """
@@ -70,8 +82,57 @@ class EntropyFilter:
             self.char_entropies.append(c_entropy)
             self.unigram_entropies.append(u_entropy)
             
+            # Update cached boundaries if needed
+            self._maybe_update_boundaries()
+            
         except Exception as e:
             print(f"Error calculating entropy: {e}")
+    
+    def _maybe_update_boundaries(self) -> None:
+        """
+        Update the cached percentile boundaries if enough new samples have been added.
+        This improves performance by avoiding recalculating percentiles for every sample.
+        """
+        current_count = len(self.char_entropies)
+        
+        # If this is the first time or we've added enough new samples since last update
+        if (self._cached_boundaries['last_update_count'] == 0 or 
+            current_count - self._cached_boundaries['last_update_count'] >= self._recalc_interval):
+            
+            # Only calculate if we have enough samples
+            if current_count >= 1000:
+                try:
+                    # Calculate the quantile points for low and high thresholds
+                    low_quantile = self.threshold
+                    high_quantile = 1.0 - self.threshold
+                    
+                    # Get a sorted copy of the deques for calculating quantiles
+                    # This is more efficient than converting to numpy arrays
+                    sorted_char = sorted(self.char_entropies)
+                    sorted_unigram = sorted(self.unigram_entropies)
+                    
+                    # Calculate percentile boundaries using statistics module
+                    self._cached_boundaries['char_low'] = statistics.quantiles(
+                        sorted_char, n=100, method='inclusive'
+                    )[int(self.threshold * 100) - 1]
+                    
+                    self._cached_boundaries['char_high'] = statistics.quantiles(
+                        sorted_char, n=100, method='inclusive'
+                    )[int((1 - self.threshold) * 100) - 1]
+                    
+                    self._cached_boundaries['unigram_low'] = statistics.quantiles(
+                        sorted_unigram, n=100, method='inclusive'
+                    )[int(self.threshold * 100) - 1]
+                    
+                    self._cached_boundaries['unigram_high'] = statistics.quantiles(
+                        sorted_unigram, n=100, method='inclusive'
+                    )[int((1 - self.threshold) * 100) - 1]
+                    
+                    # Update the last update count
+                    self._cached_boundaries['last_update_count'] = current_count
+                    
+                except Exception as e:
+                    print(f"Error updating percentile boundaries: {e}")
     
     def should_keep(self, text: str) -> bool:
         """
@@ -93,16 +154,20 @@ class EntropyFilter:
             c_entropy = char_entropy(text)
             u_entropy = unigram_entropy(text, True, True)
             
-            # Get current percentile thresholds
-            char_values = np.array(list(self.char_entropies))
-            unigram_values = np.array(list(self.unigram_entropies))
+            # Get cached percentile boundaries
+            char_low = self._cached_boundaries['char_low']
+            char_high = self._cached_boundaries['char_high']
+            unigram_low = self._cached_boundaries['unigram_low']
+            unigram_high = self._cached_boundaries['unigram_high']
             
-            # Calculate percentile boundaries
-            char_low = np.percentile(char_values, self.threshold * 100)
-            char_high = np.percentile(char_values, (1 - self.threshold) * 100)
-            
-            unigram_low = np.percentile(unigram_values, self.threshold * 100)
-            unigram_high = np.percentile(unigram_values, (1 - self.threshold) * 100)
+            # Safety check - if boundaries are not calculated yet, calculate them now
+            if any(bound is None for bound in [char_low, char_high, unigram_low, unigram_high]):
+                self._maybe_update_boundaries()
+                # Get the updated values
+                char_low = self._cached_boundaries['char_low']
+                char_high = self._cached_boundaries['char_high']
+                unigram_low = self._cached_boundaries['unigram_low']
+                unigram_high = self._cached_boundaries['unigram_high']
             
             # Decide whether to keep based on both entropy metrics
             char_ok = char_low <= c_entropy <= char_high
@@ -665,6 +730,8 @@ def train_tokenizer(
     shuffle_seed = config.get("shuffle_seed", None)
     batch_size = config.get("batch_size", 1000)
     filter_entropy = config.get("filter_entropy", None)
+    prune_min_frequency = config.get("prune_min_frequency", 10)
+    prune_step_interval = config.get("prune_step_interval", 10000)
     custom_token_settings = config.get("custom_tokens", {
         "include_whitespace": True,
         "include_markdown": True,
@@ -771,12 +838,23 @@ def train_tokenizer(
         print(f"Training tokenizer with {pretokenizer_type} pretokenizer.")
         # For custom tokenizer with pre-tokenizer, we use trainers.BpeTrainer
         from tokenizers import trainers
-        trainer = trainers.BpeTrainer(
-            vocab_size=vocab_size - len(special_tokens) - len(add_tokens),
-            min_frequency=min_frequency,
-            special_tokens=special_tokens,
-            show_progress=True
-        )
+        
+        # Prepare trainer kwargs, only adding pruning params if they're non-null
+        trainer_kwargs = {
+            "vocab_size": vocab_size - len(special_tokens) - len(add_tokens),
+            "min_frequency": min_frequency,
+            "special_tokens": special_tokens,
+            "show_progress": True
+        }
+        
+        # Only add pruning parameters if they are not None
+        if prune_min_frequency is not None:
+            trainer_kwargs["prune_min_frequency"] = prune_min_frequency
+        if prune_step_interval is not None:
+            trainer_kwargs["prune_step_interval"] = prune_step_interval
+            
+        # Initialize the trainer with the kwargs
+        trainer = trainers.BpeTrainer(**trainer_kwargs)
         
         # Use our dataset generator
         print(f"Training tokenizer with {pretokenizer_type} pretokenizer using iterator.")
@@ -945,6 +1023,8 @@ def train_tokenizer(
             print(f"  Split probability: {split_probability}")
         elif pretokenizer_type.lower() == "chunk":
             print(f"  Min length: {min_length}, Max length: {max_length}")
+        print(f"  Prune min frequency: {prune_min_frequency}")
+        print(f"  Prune step interval: {prune_step_interval}")
     
     if filter_entropy is not None:
         print(f"Entropy filtering threshold: {filter_entropy} (excluding top and bottom {filter_entropy * 100:.1f}% of samples)")
